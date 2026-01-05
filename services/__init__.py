@@ -1,33 +1,18 @@
-from .barcode_service import decode_from_base64
-from .photo_service import (
-    delete_all_products,
-    get_all_products,
-    get_product_stats,
-    insert_product_record,
-    insert_photo_record,
-    upload_to_storage,
+"""
+テスト用の最小構成。存在しないサービスモジュールへの依存を避ける。
+認証確認に必要なのは Supabase クライアントのみ。
+"""
+
+from .supabase_client import (
+    get_publishable_client,
+    get_secret_client,
+    get_supabase_client,
+    get_user_client,
 )
-from .supabase_client import get_supabase_client
-from .barcode_lookup import (
-    lookup_product,
-    lookup_product_by_barcode,
-    lookup_product_by_keyword,
-)
-from .io_intelligence import describe_image
-from .tag_extraction import extract_tags
 
 __all__ = [
-    "decode_from_base64",
-    "delete_all_products",
-    "get_all_products",
-    "get_product_stats",
-    "insert_product_record",
-    "insert_photo_record",
-    "upload_to_storage",
+    "get_publishable_client",
+    "get_secret_client",
     "get_supabase_client",
-    "lookup_product",
-    "lookup_product_by_barcode",
-    "lookup_product_by_keyword",
-    "describe_image",
-    "extract_tags",
+    "get_user_client",
 ]
