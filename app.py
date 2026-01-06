@@ -1,78 +1,93 @@
 import os
-import sys
+from flask import Flask, redirect, request, session, render_template_string
+from supabase_client import supabase
 
-import dash
-from dash import html
-from flask import g, request
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-change-this-in-production")
 
-# 親ディレクトリを import パスに追加し、既存の components/services を再利用
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+# ホームページ
+@app.route("/")
+def index():
+    user = None
+    try:
+        user = supabase.auth.get_user()
+    except:
+        pass
+    
+    if user:
+        return render_template_string("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Welcome</title>
+            <style>
+                body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+                .user-info { background: #f0f0f0; padding: 20px; border-radius: 8px; margin: 20px 0; }
+                .button { background: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block; }
+            </style>
+        </head>
+        <body>
+            <h1>Welcome!</h1>
+            <div class="user-info">
+                <p><strong>Email:</strong> {{ user.email }}</p>
+                <p><strong>ID:</strong> {{ user.id }}</p>
+            </div>
+            <a href="/signout" class="button">Sign Out</a>
+        </body>
+        </html>
+        """, user=user.user if hasattr(user, 'user') else user)
+    else:
+        return render_template_string("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Sign In</title>
+            <style>
+                body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; text-align: center; }
+                .button { background: #4285f4; color: white; padding: 15px 30px; text-decoration: none; border-radius: 4px; display: inline-block; font-size: 16px; }
+                .button:hover { background: #357ae8; }
+            </style>
+        </head>
+        <body>
+            <h1>Welcome to the App</h1>
+            <p>Please sign in with your Google account to continue.</p>
+            <a href="/signin/google" class="button">Sign in with Google</a>
+        </body>
+        </html>
+        """)
 
-# Load environment variables EARLY so services read correct .env (models, flags)
-try:
-    from dotenv import load_dotenv
-
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    dotenv_path = os.path.join(project_root, ".env")
-    load_dotenv(dotenv_path=dotenv_path, override=False)
-    print("DEBUG: Early .env loaded before services imports")
-except Exception as _early_env_err:
-    print(f"DEBUG: Early .env load skipped: {_early_env_err}")
-
-
-def create_app(server=None) -> dash.Dash:
-    """
-    認証確認用の最小Dashのみを提供する。
-    認証フロー自体は server.py の before_request が担う。
-    """
-    app = dash.Dash(
-        __name__,
-        server=server,
-        suppress_callback_exceptions=True,
-        use_pages=False,
-        meta_tags=[
-            {
-                "name": "viewport",
-                "content": "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no",
-            }
-        ],
+# Google OAuth サインイン
+@app.route("/signin/google")
+def signin_with_google():
+    res = supabase.auth.sign_in_with_oauth(
+        {
+            "provider": "google",
+            "options": {
+                "redirect_to": f"{request.host_url}callback"
+            },
+        }
     )
-    app.title = "Auth minimal"
+    return redirect(res.url)
 
-    def serve_layout():
-        # before_request で g に詰められた情報を表示する
-        user_id = getattr(g, "user_id", None)
-        host = request.host
-        path = request.path
-        scheme = request.scheme
-        return html.Div(
-            style={"fontFamily": "sans-serif", "maxWidth": "640px", "margin": "40px auto"},
-            children=[
-                html.H2("ログイン確認"),
-                html.P("Supabase Auth (Google) が通ればこのページが表示されます。"),
-                html.Div(
-                    style={"padding": "12px 16px", "background": "#f5f5f5", "borderRadius": "8px"},
-                    children=[
-                        html.Div(f"user_id: {user_id}"),
-                        html.Div(f"scheme: {scheme}"),
-                        html.Div(f"host: {host}"),
-                        html.Div(f"path: {path}"),
-                    ],
-                ),
-                html.Div(style={"marginTop": "16px"}, children=html.A("ログアウト", href="/auth/logout")),
-            ],
-        )
+# OAuth コールバック
+@app.route("/callback")
+def callback():
+    code = request.args.get("code")
+    next_url = request.args.get("next", "/")
 
-    app.layout = serve_layout
-    return app
+    if code:
+        res = supabase.auth.exchange_code_for_session({"auth_code": code})
 
+    return redirect(next_url)
+
+# サインアウト
+@app.route("/signout")
+def signout():
+    supabase.auth.sign_out()
+    return redirect("/")
 
 if __name__ == "__main__":
     import os
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port, debug=False)
 
-    app = create_app()
-    server = app.server
-    port = int(os.environ.get("PORT", 8050))
-    app.run(host="0.0.0.0", port=port)
