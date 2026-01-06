@@ -103,6 +103,8 @@ Render ダッシュボードの **Environment** セクションで以下を追�
 - `SECRET_KEY`: ランダムな文字列（Flask セッション用。`python -c "import secrets; print(secrets.token_urlsafe(32))"` で生成）
 - `PORT`: Render が自動設定（手動で設定する必要はありません）
 
+> Dockerfile の `ENV PORT=8000` はローカル実行時のデフォルトです。Render では `$PORT` が注入され、シェル経由で展開された値を使って gunicorn が起動します。
+
 #### 4.4 リダイレクト URI を更新
 
 Render にデプロイ後、以下の URL を取得：

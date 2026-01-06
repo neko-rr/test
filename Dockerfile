@@ -18,6 +18,6 @@ COPY . .
 
 EXPOSE 8000
 
-# Render が PORT を注入するので 0.0.0.0:$PORT にバインド
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:${PORT}", "--workers", "2", "--threads", "4", "--timeout", "60"]
+# Render が PORT を注入するのでシェル経由で展開してからバインド
+CMD ["sh", "-c", "gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60"]
 
