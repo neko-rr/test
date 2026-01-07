@@ -99,11 +99,28 @@
 Render ダッシュボードの **Environment** セクションで以下を追加（Git に入れない）：
 
 - `SUPABASE_URL`: Supabase プロジェクトの URL
-- `SUPABASE_KEY`: Supabase の anon/public key
+- `SUPABASE_ANON_KEY`: Supabase の anon/public key（互換のため `SUPABASE_KEY` を残す場合は両方設定推奨）
 - `SECRET_KEY`: ランダムな文字列（Flask セッション用。`python -c "import secrets; print(secrets.token_urlsafe(32))"` で生成）
 - `PORT`: Render が自動設定（手動で設定する必要はありません）
 
 > Dockerfile の `ENV PORT=8000` はローカル実行時のデフォルトです。Render では `$PORT` が注入され、シェル経由で展開された値を使って gunicorn が起動します。
+
+### 5. supabase-js 初期化の注意
+
+- ブラウザ側で supabase-js v2 を使う際は、`window.__supabaseClient = window.__supabaseClient || createClient(...)` のように一度だけ生成し、再利用してください（重複初期化による `Identifier 'supabase' has already been declared` を防ぐため）。
+- CDN 読み込みは各ページ 1 回にすること。
+
+### 5. Supabase / Google の設定（クライアント主体フロー）
+
+- Supabase 側
+  - Authentication → Providers → Google を ON
+  - Authentication → URL Configuration → Redirect URLs に以下を追加
+    - `http://127.0.0.1:8000/auth/callback`
+    - `https://<your-render-app>.onrender.com/auth/callback`
+- Google Cloud Console 側
+  - Authorized redirect URIs に **Supabase 標準** を登録
+    - `https://<project-ref>.supabase.co/auth/v1/callback`
+  - （アプリの `/auth/callback` は Google 側に登録しない。Supabase→ アプリへの遷移先のため）
 
 #### 4.4 リダイレクト URI を更新
 

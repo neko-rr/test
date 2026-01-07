@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Supabase Google Login (Client-first)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 640px; margin: 40px auto; padding: 16px; }
+    .card { background: #f5f5f5; padding: 16px; border-radius: 8px; }
+    button { padding: 10px 16px; border: none; border-radius: 4px; cursor: pointer; }
+    .primary { background: #4285f4; color: #fff; }
+    .danger { background: #dc3545; color: #fff; }
+    a { color: #4285f4; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h2>Supabase Google Login (Client-first)</h2>
+  <p>ブラウザの supabase-js がセッション保存・更新を担当します。</p>
+
+  <div class="card" id="status">Loading...</div>
+  <div style="margin-top:16px;">
+    <button class="primary" id="login-btn">Googleでログイン</button>
+    <button class="danger" id="logout-btn">ログアウト</button>
+  </div>
+
+  <script>
+    // 既に作成済みなら再利用し、重複定義を避ける
+    const SUPABASE_URL = "{{ supabase_url }}";
+    const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}"; // 互換: SUPABASE_KEY を fallback
+    window.__supabaseClient = window.__supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sb = window.__supabaseClient;
+    const statusEl = document.getElementById('status');
+    const loginBtn = document.getElementById('login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+
+    function renderStatus(user) {
+      if (user) {
+        statusEl.innerHTML = `
+          <div>ログイン中</div>
+          <div><strong>Email:</strong> ${user.email}</div>
+          <div><strong>ID:</strong> ${user.id}</div>
+        `;
+      } else {
+        statusEl.innerHTML = `<div>未ログインです。</div>`;
+      }
+    }
+
+    async function refreshSession() {
+      const { data, error } = await sb.auth.getSession();
+      if (error) {
+        statusEl.innerHTML = `<div style="color:red;">${error.message}</div>`;
+        return null;
+      }
+      return data.session?.user || null;
+    }
+
+    loginBtn.onclick = async () => {
+      const { data, error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+      if (error) {
+        statusEl.innerHTML = `<div style="color:red;">${error.message}</div>`;
+        return;
+      }
+      // OAuthリダイレクトに移るのでここでは何もしない
+    };
+
+    logoutBtn.onclick = async () => {
+      await sb.auth.signOut();
+      renderStatus(null);
+    };
+
+    (async () => {
+      const user = await refreshSession();
+      renderStatus(user);
+      // セッション変化を監視
+      sb.auth.onAuthStateChange((event, session) => {
+        renderStatus(session?.user || null);
+      });
+    })();
+  </script>
+</body>
+</html>
+

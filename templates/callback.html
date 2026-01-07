@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Auth Callback</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="msg">Handling callback...</div>
+  <script>
+    const SUPABASE_URL = "{{ supabase_url }}";
+    const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
+    window.__supabaseClient = window.__supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sb = window.__supabaseClient;
+
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      const next = '/';
+      if (!code) {
+        document.getElementById('msg').innerText = 'No code in callback.';
+        return;
+      }
+      const { data, error } = await sb.auth.exchangeCodeForSession(code);
+      if (error) {
+        document.getElementById('msg').innerText = `Error: ${error.message}`;
+        return;
+      }
+      window.location.replace(next);
+    })();
+  </script>
+</body>
+</html>
+
