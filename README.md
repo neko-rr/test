@@ -1,10 +1,10 @@
-# Google OAuth with Flask and Supabase on Render
+# Google OAuth (Supabase) + Flask + Dash (Docker on Render)
 
-このプロジェクトは、Flask アプリケーションに Google OAuth 認証を実装し、Render にデプロイするためのサンプルです。
+サーバ側 PKCE コード交換＋ HttpOnly Cookie で Dash を入口保護する最小構成です。Docker で Render にデプロイできます。
 
 ## 前提条件
 
-- Python 3.8 以上
+- Python 3.11 推奨（Docker は python:3.11-slim）
 - Supabase アカウント（無料で作成可能）
 - Render アカウント（無料で作成可能）
 - Google Cloud Console アカウント（Google OAuth 設定用）
@@ -16,7 +16,7 @@
 1. [Supabase](https://supabase.com/)でアカウントを作成し、新しいプロジェクトを作成
 2. プロジェクトの設定から以下を取得：
    - **Project URL** (`SUPABASE_URL`)
-   - **anon/public key** (`SUPABASE_KEY`)
+   - **anon/public key** (`SUPABASE_ANON_KEY`) ※互換で `SUPABASE_KEY` も可
 
 ### 2. Supabase で Google OAuth を有効化
 
@@ -34,12 +34,12 @@
    - **クライアント ID** と **クライアント シークレット** をコピー
 4. Supabase の Google プロバイダー設定に、コピーした**クライアント ID**と**クライアント シークレット**を入力して保存
 
-### 3. ローカル環境でのテスト
+### 3. ローカル環境でのテスト（PKCE ＋ HttpOnly Cookie）
 
 1. リポジトリをクローン（またはこのプロジェクトを使用）
 2. 仮想環境を作成してアクティベート：
    ```bash
-   python -m venv venv  # 3.14は、依存ライブラリ側（httpcore）が対応していない。本番のDockerfile が python:3.11-slimらしい
+   python -m venv venv  # 3.11 推奨（Dockerと合わせる）
    source venv/bin/activate  # Windows: venv\Scripts\activate
    ```
    ```bash
@@ -61,17 +61,21 @@
 
    ```bash
    export SUPABASE_URL="your-supabase-project-url"
-   export SUPABASE_KEY="your-supabase-anon-key"
+   export SUPABASE_ANON_KEY="your-supabase-anon-key"  # または SUPABASE_KEY
    export SECRET_KEY="生成したランダム文字列"
+   export APP_BASE_URL="http://127.0.0.1:8000"
+   export COOKIE_SECURE="false"
+   export COOKIE_SAMESITE="Lax"
    ```
 
-   または `.env` ファイルを作成（本番環境では使用しないでください）
+   または `.env` ファイルを作成（本番環境では環境変数を推奨）
 
 5. アプリケーションを起動：
    ```bash
    python app.py
    ```
-6. ブラウザで `http://localhost:8000` にアクセス
+6. ブラウザで `http://127.0.0.1:8000/login` にアクセスし、Google ログイン → `/` (Dash) 表示を確認
+   - ログアウトは `/logout`（Google アカウントのサインアウトとは別）
 
 ### 4. Render へのデプロイ（Docker）
 
@@ -99,12 +103,12 @@
 Render ダッシュボードの **Environment** セクションで以下を追加（Git に入れない）：
 
 - `SUPABASE_URL`: Supabase プロジェクトの URL
-- `SUPABASE_ANON_KEY`: Supabase の anon/public key
-- `APP_BASE_URL`: Render 本番では `https://<your-render-app>.onrender.com`、ローカルでは `http://127.0.0.1:8000`
+- `SUPABASE_ANON_KEY`: Supabase の anon/public key（互換: `SUPABASE_KEY`）
+- `APP_BASE_URL`: Render 本番は `https://<your-render-app>.onrender.com`
 - `SECRET_KEY`: ランダムな文字列（Flask セッション用。`python -c "import secrets; print(secrets.token_urlsafe(32))"` で生成）
-- `COOKIE_SECURE`: Render では `true` を推奨（ローカルでは省略可）
-- `COOKIE_SAMESITE`: `Lax` を推奨
-- `PORT`: Render が自動設定（手動で設定する必要はありません）
+- `COOKIE_SECURE`: 本番は `true` 推奨（HTTPS で Cookie を送るため）
+- `COOKIE_SAMESITE`: `Lax` 推奨
+- `PORT`: Render が自動設定（Dockerfile が `$PORT` を参照）
 
 > Dockerfile の `ENV PORT=8000` はローカル実行時のデフォルトです。Render では `$PORT` が注入され、シェル経由で展開された値を使って gunicorn が起動します。
 
@@ -120,32 +124,7 @@ Render ダッシュボードの **Environment** セクションで以下を追�
     - `https://<project-ref>.supabase.co/auth/v1/callback`
   - Authorized JavaScript origins にローカル/本番の origin を登録（例: `http://127.0.0.1:8000`, `https://<your-render-app>.onrender.com`）
 
-#### 4.4 リダイレクト URI を更新
-
-Render にデプロイ後、以下の URL を取得：
-
-```
-https://your-app-name.onrender.com/callback
-```
-
-この URL を以下に追加する必要があります：
-
-1. **Supabase 側**:
-
-   - Supabase ダッシュボード → **Authentication** → **URL Configuration**
-   - **Redirect URLs** に追加：
-     ```
-     https://your-app-name.onrender.com/callback
-     ```
-
-2. **Google Cloud Console 側**:
-   - Google Cloud Console → **認証情報** → OAuth 2.0 クライアント ID
-   - **承認済みのリダイレクト URI** に追加：
-     ```
-     https://your-app-name.onrender.com/callback
-     ```
-
-#### 4.5 デプロイ
+#### 4.4 デプロイ
 
 1. **Create Web Service** をクリック
 2. デプロイが完了するまで待機（数分かかります）
@@ -155,13 +134,14 @@ https://your-app-name.onrender.com/callback
 
 ```
 .
-├── app.py                 # メインアプリケーションファイル
-├── flask_storage.py       # Flaskセッションストレージ
-├── supabase_client.py     # Supabaseクライアント設定
-├── requirements.txt       # Python依存関係
-├── Procfile              # Render用起動コマンド
-├── .gitignore           # Git除外ファイル
-└── README.md            # このファイル
+├── app.py                 # メインアプリ（Flask + Dash, サーバ側PKCE）
+├── supabase_client.py     # Supabaseクライアント設定（シンプル版）
+├── flask_storage.py       # （未使用なら削除可）
+├── requirements.txt       # 依存関係
+├── Dockerfile             # Render 用（Dockerデプロイ）
+├── .dockerignore
+├── .gitignore
+└── README.md
 ```
 
 ## トラブルシューティング
@@ -174,8 +154,8 @@ https://your-app-name.onrender.com/callback
 
 ### セッションが保持されない場合
 
-- `SECRET_KEY`が設定されているか確認
-- Cookie の設定を確認（HTTPS が必要な場合があります）
+- `SECRET_KEY` が設定されているか確認
+- Cookie の設定を確認（本番は HTTPS 必須、`COOKIE_SECURE=true` 推奨）
 
 ## 参考リンク
 
