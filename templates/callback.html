@@ -8,26 +8,105 @@
 </head>
 <body>
   <div id="msg">Handling callback...</div>
+  <pre id="debug" style="white-space:pre-wrap; background:#f5f5f5; padding:12px; border-radius:8px; display:none;"></pre>
   <script>
     const SUPABASE_URL = "{{ supabase_url }}";
     const SUPABASE_ANON_KEY = "{{ supabase_anon_key }}";
-    window.__supabaseClient = window.__supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window.__supabaseClient = window.__supabaseClient || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        // 可能ならPKCE（code）を優先。すでにhashトークンで戻るケースも getSessionFromUrl で吸収する。
+        flowType: 'pkce',
+        detectSessionInUrl: true,
+        persistSession: true,
+        autoRefreshToken: true
+      }
+    });
     const sb = window.__supabaseClient;
 
     (async () => {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
+      const queryParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
       const next = '/';
-      if (!code) {
-        document.getElementById('msg').innerText = 'No code in callback.';
+
+      // debug: 機密（token等）は表示しない。存在有無だけ出す。
+      const hasHashAccessToken = !!hashParams.get('access_token');
+      const hasHashRefreshToken = !!hashParams.get('refresh_token');
+      const hasHashProviderToken = !!hashParams.get('provider_token');
+      const err = queryParams.get('error') || hashParams.get('error');
+      const errDesc = queryParams.get('error_description') || hashParams.get('error_description');
+      const errCode = queryParams.get('error_code') || hashParams.get('error_code');
+
+      const debugEl = document.getElementById('debug');
+      const debugEnabled = "{{ '1' if auth_debug else '0' }}" === "1";
+
+      if (debugEnabled) {
+        debugEl.style.display = 'block';
+        debugEl.textContent =
+          `location.origin=${window.location.origin}\n` +
+          `location.pathname=${window.location.pathname}\n` +
+          `location.search=${window.location.search}\n` +
+          `location.hash_present=${window.location.hash ? 'yes' : 'no'}\n` +
+          `hash_has_access_token=${hasHashAccessToken ? 'yes' : 'no'}\n` +
+          `hash_has_refresh_token=${hasHashRefreshToken ? 'yes' : 'no'}\n` +
+          `hash_has_provider_token=${hasHashProviderToken ? 'yes' : 'no'}\n` +
+          `error=${err || ''}\n` +
+          `error_code=${errCode || ''}\n` +
+          `error_description=${errDesc || ''}\n`;
+        console.log("[AUTH_DEBUG] callback params", {
+          origin: window.location.origin,
+          pathname: window.location.pathname,
+          search: window.location.search,
+          hash_present: !!window.location.hash,
+          hash_has_access_token: hasHashAccessToken,
+          hash_has_refresh_token: hasHashRefreshToken,
+          hash_has_provider_token: hasHashProviderToken,
+          error: err,
+          error_code: errCode,
+          error_description: errDesc
+        });
+      }
+
+      // Supabase/Google からエラーで戻るケース
+      if (err) {
+        document.getElementById('msg').innerText = `OAuth error: ${err}${errDesc ? " - " + errDesc : ""}`;
         return;
       }
-      const { data, error } = await sb.auth.exchangeCodeForSession(code);
-      if (error) {
-        document.getElementById('msg').innerText = `Error: ${error.message}`;
+
+      // 推奨: URLからセッションを確立（codeでもhash tokenでも吸収）
+      // ただし環境によっては getSessionFromUrl が利用できない場合があるので、hashトークンのfallbackも用意する。
+      let sessionEstablished = false;
+      let lastError = null;
+
+      if (typeof sb.auth.getSessionFromUrl === 'function') {
+        const { data, error } = await sb.auth.getSessionFromUrl({ storeSession: true });
+        if (debugEnabled) console.log("[AUTH_DEBUG] getSessionFromUrl", { hasSession: !!data?.session, error });
+        if (error) lastError = error;
+        if (data?.session) sessionEstablished = true;
+      } else if (hasHashAccessToken && hasHashRefreshToken && typeof sb.auth.setSession === 'function') {
+        // fallback: hashにあるトークンからセッションを設定（値自体はログに出さない）
+        const access_token = hashParams.get('access_token');
+        const refresh_token = hashParams.get('refresh_token');
+        const { data, error } = await sb.auth.setSession({ access_token, refresh_token });
+        if (debugEnabled) console.log("[AUTH_DEBUG] setSession fallback", { hasSession: !!data?.session, error });
+        if (error) lastError = error;
+        if (data?.session) sessionEstablished = true;
+      }
+
+      if (sessionEstablished) {
+        // URL上に token/code が残らないように削除してから遷移
+        try {
+          window.history.replaceState({}, document.title, "/auth/callback");
+        } catch (e) {}
+        window.location.replace(next);
         return;
       }
-      window.location.replace(next);
+
+      if (lastError) {
+        document.getElementById('msg').innerText = `Error: ${lastError.message}`;
+        return;
+      }
+
+      document.getElementById('msg').innerText = 'No session established. Redirect URLs と provider 設定を確認してください。';
     })();
   </script>
 </body>

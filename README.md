@@ -94,33 +94,31 @@
 4. **Runtime**: Docker を選択（ルートの `Dockerfile` を使用）
 5. **Plan**: Free（または有料プラン）
 
-#### 4.3 環境変数を設定
+#### 4.3 環境変数を設定（サーバ主体フロー）
 
 Render ダッシュボードの **Environment** セクションで以下を追加（Git に入れない）：
 
 - `SUPABASE_URL`: Supabase プロジェクトの URL
-- `SUPABASE_ANON_KEY`: Supabase の anon/public key（互換のため `SUPABASE_KEY` を残す場合は両方設定推奨）
+- `SUPABASE_ANON_KEY`: Supabase の anon/public key
+- `APP_BASE_URL`: Render 本番では `https://<your-render-app>.onrender.com`、ローカルでは `http://127.0.0.1:8000`
 - `SECRET_KEY`: ランダムな文字列（Flask セッション用。`python -c "import secrets; print(secrets.token_urlsafe(32))"` で生成）
+- `COOKIE_SECURE`: Render では `true` を推奨（ローカルでは省略可）
+- `COOKIE_SAMESITE`: `Lax` を推奨
 - `PORT`: Render が自動設定（手動で設定する必要はありません）
 
 > Dockerfile の `ENV PORT=8000` はローカル実行時のデフォルトです。Render では `$PORT` が注入され、シェル経由で展開された値を使って gunicorn が起動します。
 
-### 5. supabase-js 初期化の注意
-
-- ブラウザ側で supabase-js v2 を使う際は、`window.__supabaseClient = window.__supabaseClient || createClient(...)` のように一度だけ生成し、再利用してください（重複初期化による `Identifier 'supabase' has already been declared` を防ぐため）。
-- CDN 読み込みは各ページ 1 回にすること。
-
-### 5. Supabase / Google の設定（クライアント主体フロー）
+### 5. Supabase / Google の設定（サーバ主体フロー：PKCE 交換をサーバで実施）
 
 - Supabase 側
   - Authentication → Providers → Google を ON
-  - Authentication → URL Configuration → Redirect URLs に以下を追加
+  - Authentication → URL Configuration → Redirect URLs に以下を追加（**ポート/ホスト完全一致**）
     - `http://127.0.0.1:8000/auth/callback`
     - `https://<your-render-app>.onrender.com/auth/callback`
 - Google Cloud Console 側
   - Authorized redirect URIs に **Supabase 標準** を登録
     - `https://<project-ref>.supabase.co/auth/v1/callback`
-  - （アプリの `/auth/callback` は Google 側に登録しない。Supabase→ アプリへの遷移先のため）
+  - Authorized JavaScript origins にローカル/本番の origin を登録（例: `http://127.0.0.1:8000`, `https://<your-render-app>.onrender.com`）
 
 #### 4.4 リダイレクト URI を更新
 
@@ -182,5 +180,7 @@ https://your-app-name.onrender.com/callback
 ## 参考リンク
 
 - [Supabase Auth Documentation](https://supabase.com/docs/guides/auth)
+- [Supabase Error Codes](https://supabase.com/docs/guides/auth/debugging/error-codes)
+- [Supabase Login with Google](https://supabase.com/docs/guides/auth/social-login/auth-google?queryGroups=framework&framework=express)
 - [Flask Documentation](https://flask.palletsprojects.com/)
 - [Render Documentation](https://render.com/docs)
